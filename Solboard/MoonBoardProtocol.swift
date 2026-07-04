@@ -101,6 +101,20 @@ enum MoonBoardProtocol {
     /// TX characteristic (write). Verify UUID + whether it's write-with-response.
     static let uartTX = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 
+    // MARK: Board image overlay calibration (gym-day tunable, one place)
+
+    /// Fractions of the "board" image consumed by margin OUTSIDE the 11×18 hold
+    /// grid — the border of the photo before the first/last hold centers. Tune
+    /// these four numbers so the overlaid rings land on the physical holds.
+    /// Only used when a user-supplied `board` image is present.
+    struct ImageInsets {
+        var top: CGFloat
+        var bottom: CGFloat
+        var left: CGFloat
+        var right: CGFloat
+    }
+    static let imageInsets = ImageInsets(top: 0.05, bottom: 0.05, left: 0.07, right: 0.07)
+
     // Grid labels for the UI.
     static func columnLabel(_ col: Int) -> String {
         String(UnicodeScalar(UInt8(65 + col)))   // A ... K

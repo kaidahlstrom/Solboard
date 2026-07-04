@@ -50,6 +50,7 @@ Three screens max:
 
 - Presets stored as a JSON file in the app's Documents directory. Schema: `{ name, createdAt, holds: [{ col, row, type }] }`. No SwiftData/CoreData unless asked.
 - Visuals: stock SwiftUI. No custom design, no animations beyond defaults. Grid cells show column letter + row number in small text.
+- **Board image (user-supplied).** The Board screen can render a photo of the wall as the background with transparent tap cells overlaid; selected holds draw colored rings (green/blue/red). Drop a photo into the `board` image set (`Solboard/Assets.xcassets/board.imageset/`). This image is a Moon Climbing asset — it is **gitignored and must never be committed** to this public repo (only the imageset's `Contents.json` is tracked). If no image is present, the app falls back to a plain 11×18 grid. Alignment is calibrated via `MoonBoardProtocol.imageInsets` (top/bottom/left/right fractions) — the one place to tune ring positions.
 - `NSBluetoothAlwaysUsageDescription` must be set in target Info.
 
 ## Build & run
