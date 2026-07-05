@@ -50,6 +50,8 @@ struct BLEDebug: Equatable {
     var lastWriteAck: String?           // result of a with-response write
     var lastError: String?
     var sendCount = 0                    // increments on every Light-it tap
+    var chunkCount = 0                   // chunks the last payload was split into
+    var maxWriteLen = 0                  // per-write byte cap actually used
 }
 
 @MainActor
@@ -65,6 +67,8 @@ final class BLEManager: NSObject, ObservableObject {
     private var central: CBCentralManager!
     private var connected: CBPeripheral?
     private var writeCharacteristic: CBCharacteristic?
+    /// Remaining command chunks awaiting sequential, ack-paced writes.
+    private var pendingChunks: [Data] = []
 
     private let serviceUUID = CBUUID(string: MoonBoardProtocol.uartService)
     private let rxUUID = CBUUID(string: MoonBoardProtocol.uartRX)
@@ -146,23 +150,56 @@ final class BLEManager: NSObject, ObservableObject {
         lastSendError = nil
         let command = MoonBoardProtocol.command(for: holds)
         let data = Data(command.utf8)
-        // A full route is a short ASCII string (well under the BLE MTU), so no
-        // chunking is needed. Prefer write-without-response when supported.
-        let supportsNoResp = tx.properties.contains(.writeWithoutResponse)
-        let type: CBCharacteristicWriteType = supportsNoResp ? .withoutResponse : .withResponse
+
+        // Old Nordic chip: 23-byte ATT MTU → only 20 usable bytes; single writes
+        // over that are silently dropped. Chunk to the negotiated max (capped at
+        // 20) and send sequentially with write-with-response, waiting for each
+        // ack before the next chunk. The l#…# framing lets the box reassemble.
+        let maxLen = min(peripheral.maximumWriteValueLength(for: .withResponse), 20)
+        pendingChunks = Self.chunk(data, size: maxLen)
 
         debug.peripheralName = peripheral.name
         debug.characteristicUUID = tx.uuid.uuidString
         debug.characteristicProps = Self.propsString(tx.properties)
         debug.lastPayload = command
         debug.lastBytesHex = data.map { String(format: "%02X", $0) }.joined(separator: " ")
-        debug.lastWriteType = supportsNoResp ? "withoutResponse" : "withResponse"
-        debug.lastWriteAck = supportsNoResp ? "n/a (no ack)" : "pending…"
+        debug.lastWriteType = "withResponse"
+        debug.lastWriteAck = "pending…"
         debug.lastError = nil
-        log("write \(tx.uuid) props=[\(debug.characteristicProps ?? "")] type=\(debug.lastWriteType ?? "")")
-        log("payload=\"\(command)\" bytes=\(debug.lastBytesHex ?? "")")
+        debug.chunkCount = pendingChunks.count
+        debug.maxWriteLen = maxLen
+        log("write \(tx.uuid) payload=\"\(command)\" \(pendingChunks.count) chunk(s) maxLen=\(maxLen)")
 
-        peripheral.writeValue(data, for: tx, type: type)
+        writeNextChunk()
+    }
+
+    /// Write the next queued chunk. Called on each successful ack to advance.
+    private func writeNextChunk() {
+        guard let peripheral = connected, let tx = writeCharacteristic else {
+            pendingChunks.removeAll()
+            return
+        }
+        guard !pendingChunks.isEmpty else {
+            debug.lastWriteAck = "ok (\(debug.chunkCount) chunk(s))"
+            log("all chunks written")
+            return
+        }
+        let chunk = pendingChunks.removeFirst()
+        log("→ chunk \(chunk.map { String(format: "%02X", $0) }.joined(separator: " "))")
+        peripheral.writeValue(chunk, for: tx, type: .withResponse)
+    }
+
+    /// Split `data` into consecutive slices of at most `size` bytes.
+    static func chunk(_ data: Data, size: Int) -> [Data] {
+        guard size > 0, data.count > size else { return data.isEmpty ? [] : [data] }
+        var chunks: [Data] = []
+        var i = data.startIndex
+        while i < data.endIndex {
+            let end = data.index(i, offsetBy: size, limitedBy: data.endIndex) ?? data.endIndex
+            chunks.append(data.subdata(in: i..<end))
+            i = end
+        }
+        return chunks
     }
 
     /// Human-readable string of a characteristic's write-relevant properties.
@@ -235,6 +272,7 @@ extension BLEManager: CBCentralManagerDelegate {
         Task { @MainActor in
             connected = nil
             writeCharacteristic = nil
+            pendingChunks.removeAll()
             debug.characteristicUUID = nil
             debug.characteristicProps = nil
             status = .disconnected
@@ -280,10 +318,11 @@ extension BLEManager: CBPeripheralDelegate {
                 lastSendError = error.localizedDescription
                 debug.lastWriteAck = "error"
                 debug.lastError = error.localizedDescription
+                pendingChunks.removeAll()          // abort the rest of the sequence
                 log("write ack ERROR: \(error.localizedDescription)")
             } else {
-                debug.lastWriteAck = "ok"
                 log("write ack OK for \(characteristic.uuid)")
+                writeNextChunk()                    // ack received → send next chunk
             }
         }
     }

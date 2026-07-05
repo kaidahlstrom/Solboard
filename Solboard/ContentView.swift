@@ -86,6 +86,7 @@ struct BoardView: View {
             Text("writeChar: \(d.characteristicUUID ?? "nil")")
                 .foregroundStyle(d.characteristicUUID == nil ? Color.red : Color.secondary)
             Text("props: [\(d.characteristicProps ?? "—")]  type: \(d.lastWriteType ?? "—")")
+            Text("chunks: \(d.chunkCount) @ maxLen \(d.maxWriteLen)")
             Text("ack: \(d.lastWriteAck ?? "—")  taps: \(d.sendCount)")
             Text("payload: \(d.lastPayload ?? "—")")
             Text("bytes: \(d.lastBytesHex ?? "—")")
