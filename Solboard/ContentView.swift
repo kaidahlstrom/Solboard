@@ -9,25 +9,32 @@ import SwiftUI
 import UIKit
 
 struct ContentView: View {
+    enum Tab { case board, presets, connect }
+
     // The route currently on the grid — shared so presets can load into it.
     @State private var grid = BoardGrid()
+    @State private var selectedTab: Tab = .board
     @StateObject private var ble = BLEManager()
     @StateObject private var presets = PresetStore()
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             BoardView(grid: $grid, ble: ble) { name in
                 presets.add(name: name, holds: grid.holds)
             }
             .tabItem { Label("Board", systemImage: "square.grid.3x3") }
+            .tag(Tab.board)
 
             PresetsView(presets: presets) { preset in
                 grid = BoardGrid(holds: preset.holds)
+                selectedTab = .board          // jump to the board to see the loaded route
             }
             .tabItem { Label("Presets", systemImage: "list.bullet") }
+            .tag(Tab.presets)
 
             ConnectView(ble: ble)
                 .tabItem { Label("Connect", systemImage: "dot.radiowaves.left.and.right") }
+                .tag(Tab.connect)
         }
     }
 }
@@ -44,6 +51,8 @@ struct BoardView: View {
     @State private var presetName = ""
     /// DEBUG-only: draw every cell outline over the image to judge alignment.
     @State private var calibrating = false
+    /// DEBUG-only: reveal the write-path diagnostics panel.
+    @State private var showDebug = false
 
     /// User-supplied board photo (gitignored, never redistributed). Absent = fallback grid.
     private var boardImage: UIImage? { UIImage(named: "board") }
@@ -61,7 +70,7 @@ struct BoardView: View {
             buttonRow
 
             #if DEBUG
-            debugPanel
+            if showDebug { debugPanel }
             #endif
         }
         .padding()
@@ -113,6 +122,9 @@ struct BoardView: View {
             Spacer()
             #if DEBUG
             Toggle("Calibrate", isOn: $calibrating)
+                .toggleStyle(.button)
+                .font(.caption)
+            Toggle("Debug", isOn: $showDebug)
                 .toggleStyle(.button)
                 .font(.caption)
             #endif

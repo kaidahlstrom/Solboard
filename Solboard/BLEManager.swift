@@ -17,6 +17,7 @@ enum ConnectionStatus: Equatable {
     case scanning
     case connecting(String)
     case connected(String)
+    case reconnecting(String)
 
     var label: String {
         switch self {
@@ -25,6 +26,7 @@ enum ConnectionStatus: Equatable {
         case .scanning:            return "Scanning…"
         case .connecting(let n):   return "Connecting to \(n)…"
         case .connected(let n):    return "Connected: \(n)"
+        case .reconnecting(let n): return "Reconnecting to \(n)…"
         }
     }
 }
@@ -69,6 +71,10 @@ final class BLEManager: NSObject, ObservableObject {
     private var writeCharacteristic: CBCharacteristic?
     /// Remaining command chunks awaiting sequential, ack-paced writes.
     private var pendingChunks: [Data] = []
+    /// True while the user explicitly tapped Disconnect — suppresses auto-reconnect.
+    private var userInitiatedDisconnect = false
+    /// Active auto-reconnect attempt, if any.
+    private var reconnectTask: Task<Void, Never>?
 
     private let serviceUUID = CBUUID(string: MoonBoardProtocol.uartService)
     private let rxUUID = CBUUID(string: MoonBoardProtocol.uartRX)
@@ -117,6 +123,9 @@ final class BLEManager: NSObject, ObservableObject {
     }
 
     private func connect(_ peripheral: CBPeripheral, name: String) {
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        userInitiatedDisconnect = false
         connected = peripheral
         peripheral.delegate = self
         status = .connecting(name)
@@ -124,7 +133,39 @@ final class BLEManager: NSObject, ObservableObject {
     }
 
     func disconnect() {
+        userInitiatedDisconnect = true         // suppress auto-reconnect
+        reconnectTask?.cancel()
+        reconnectTask = nil
         if let p = connected { central.cancelPeripheralConnection(p) }
+    }
+
+    /// Auto-reconnect after an UNEXPECTED drop: retry the same peripheral with
+    /// exponential backoff, giving up after ~30s and reverting to Disconnected.
+    private func beginReconnect(to peripheral: CBPeripheral) {
+        let name = peripheral.name ?? "MoonBoard"
+        status = .reconnecting(name)
+        connected = peripheral
+        peripheral.delegate = self
+        reconnectTask?.cancel()
+        reconnectTask = Task { @MainActor in
+            let timeout = 30.0
+            var elapsed = 0.0
+            var delay = 0.5
+            while elapsed < timeout {
+                if Task.isCancelled { return }
+                central.connect(peripheral)                 // no-op if already pending
+                let step = min(delay, timeout - elapsed)
+                try? await Task.sleep(nanoseconds: UInt64(step * 1_000_000_000))
+                elapsed += step
+                if case .connected = status { return }      // didConnect + discovery won
+                delay = min(delay * 2, 4)                   // short backoff, capped at 4s
+            }
+            if case .connected = status { return }
+            central.cancelPeripheralConnection(peripheral)  // give up
+            connected = nil
+            reconnectTask = nil
+            if case .reconnecting = status { status = .disconnected }
+        }
     }
 
     /// Reconnect to the last box we used, without showing the scan UI.
@@ -261,6 +302,7 @@ extension BLEManager: CBCentralManagerDelegate {
                                     didFailToConnect peripheral: CBPeripheral,
                                     error: Error?) {
         Task { @MainActor in
+            if reconnectTask != nil { return }   // let the reconnect loop keep retrying
             connected = nil
             status = .disconnected
         }
@@ -270,12 +312,18 @@ extension BLEManager: CBCentralManagerDelegate {
                                     didDisconnectPeripheral peripheral: CBPeripheral,
                                     error: Error?) {
         Task { @MainActor in
-            connected = nil
             writeCharacteristic = nil
             pendingChunks.removeAll()
             debug.characteristicUUID = nil
             debug.characteristicProps = nil
-            status = .disconnected
+            // User tapped Disconnect → stay down. Unexpected drop → auto-reconnect.
+            if userInitiatedDisconnect {
+                userInitiatedDisconnect = false
+                connected = nil
+                status = .disconnected
+            } else {
+                beginReconnect(to: peripheral)
+            }
         }
     }
 }
