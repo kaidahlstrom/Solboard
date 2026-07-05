@@ -42,6 +42,8 @@ struct BoardView: View {
 
     @State private var showingSave = false
     @State private var presetName = ""
+    /// DEBUG-only: draw every cell outline over the image to judge alignment.
+    @State private var calibrating = false
 
     /// User-supplied board photo (gitignored, never redistributed). Absent = fallback grid.
     private var boardImage: UIImage? { UIImage(named: "board") }
@@ -79,6 +81,11 @@ struct BoardView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Spacer()
+            #if DEBUG
+            Toggle("Calibrate", isOn: $calibrating)
+                .toggleStyle(.button)
+                .font(.caption)
+            #endif
         }
     }
 
@@ -152,13 +159,24 @@ struct BoardView: View {
     private func ringCell(col: Int, row: Int, cellW: CGFloat, cellH: CGFloat) -> some View {
         let type = grid.type(col: col, row: row)
         let diameter = min(cellW, cellH) * 0.82
-        return Circle()
-            .strokeBorder(color(for: type), lineWidth: type == nil ? 1 : 3)
-            .frame(width: diameter, height: diameter)
-            .opacity(type == nil ? 0.3 : 1)          // empty holds: faint tap hint
-            .frame(width: cellW, height: cellH)       // full-cell hit target
-            .contentShape(Rectangle())
-            .onTapGesture { grid.cycle(col: col, row: row) }
+        return ZStack {
+            // Calibration: outline every cell so grid-vs-hold alignment is obvious.
+            if calibrating {
+                Rectangle()
+                    .strokeBorder(Color.yellow, lineWidth: 0.75)
+                    .frame(width: cellW, height: cellH)
+                Text("\(MoonBoardProtocol.columnLabel(col))\(MoonBoardProtocol.rowLabel(row))")
+                    .font(.system(size: 6))
+                    .foregroundStyle(Color.yellow)
+            }
+            Circle()
+                .strokeBorder(color(for: type), lineWidth: type == nil ? 1 : 3)
+                .frame(width: diameter, height: diameter)
+                .opacity(type == nil ? (calibrating ? 0.6 : 0.3) : 1)   // empty: faint tap hint
+        }
+        .frame(width: cellW, height: cellH)       // full-cell hit target
+        .contentShape(Rectangle())
+        .onTapGesture { grid.cycle(col: col, row: row) }
     }
 
     private func color(for type: HoldType?) -> Color {
