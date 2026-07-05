@@ -260,11 +260,6 @@ struct ConnectView: View {
                         }
                     }
                 }
-                Section {
-                    Toggle("Show all devices", isOn: $ble.showAllDevices)
-                } footer: {
-                    Text("On for first contact if the board's name doesn't match. Off shows only likely MoonBoard boxes.")
-                }
                 Section("Devices") {
                     if ble.visibleDevices.isEmpty {
                         Text("Tap Scan to find your MoonBoard box.")

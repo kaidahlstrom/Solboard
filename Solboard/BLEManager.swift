@@ -43,9 +43,6 @@ final class BLEManager: NSObject, ObservableObject {
     @Published private(set) var status: ConnectionStatus = .disconnected
     /// Every named peripheral seen this scan. The Connect list shows `visibleDevices`.
     @Published private(set) var discovered: [DiscoveredPeripheral] = []
-    /// Escape hatch for first contact: show unfiltered results if the real box's
-    /// advertised name doesn't match our MoonBoard heuristic. Toggled from the UI.
-    @Published var showAllDevices = false
     /// Set after a failed/successful send so the UI can surface a one-line result.
     @Published var lastSendError: String?
 
@@ -56,16 +53,13 @@ final class BLEManager: NSObject, ObservableObject {
     private let serviceUUID = CBUUID(string: MoonBoardProtocol.uartService)
     private let rxUUID = CBUUID(string: MoonBoardProtocol.uartRX)
 
-    /// Restrict scanning to the Nordic UART service. Confirmed on-site, so this is
-    /// on. Set false only to troubleshoot if the box stops advertising the service.
-    private let filterScanByService = true
-
     private let lastPeripheralKey = "lastPeripheralUUID"
 
-    /// The Connect-tab list: all named devices when `showAllDevices`, otherwise
-    /// only those whose name looks like a MoonBoard box.
+    /// The Connect-tab list. Two layers of filtering, both always on: scanning is
+    /// restricted to the UART service (below), then names are narrowed to MoonBoard
+    /// boxes here — so only MoonBoard boxes ever reach the UI.
     var visibleDevices: [DiscoveredPeripheral] {
-        showAllDevices ? discovered : discovered.filter { Self.looksLikeMoonBoard($0.name) }
+        discovered.filter { Self.looksLikeMoonBoard($0.name) }
     }
 
     /// Name contains "moon" (any case), or is a bare 12-digit numeric ID (some
@@ -88,8 +82,8 @@ final class BLEManager: NSObject, ObservableObject {
         guard central.state == .poweredOn else { return }
         discovered.removeAll()
         status = .scanning
-        let services: [CBUUID]? = filterScanByService ? [serviceUUID] : nil
-        central.scanForPeripherals(withServices: services)
+        // Always restrict to the confirmed UART service (first filter layer).
+        central.scanForPeripherals(withServices: [serviceUUID])
     }
 
     func stopScan() {

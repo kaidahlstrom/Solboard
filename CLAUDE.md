@@ -29,7 +29,7 @@ l#<hold>,<hold>,...#
   - `S` = start hold (green)
   - `P` = progress/move hold (blue)
   - `E` = end hold (red)
-- Example: `l#S5,P9,P13,E18#`
+- Example (real 0-based positions): `l#S0,P50,E197#` = start on A1 (pos 0), move on C15 (pos 50), end on K18 (pos 197).
 - Position range **0–197**, straight column-major (see Q2/Q3 below). Out-of-range positions are silently ignored by the box.
 
 **Open questions — all RESOLVED on-site (nRF Connect + test pattern):**
