@@ -108,20 +108,25 @@ enum MoonBoardProtocol {
     // MARK: Board image overlay calibration (gym-day tunable, one place)
 
     /// Fractions of the "board" image consumed by margin OUTSIDE the 11×18 hold
-    /// grid — the border of the photo before the first/last hold centers. Tune
-    /// these four numbers so the overlaid rings land on the physical holds.
-    /// Only used when a user-supplied `board` image is present.
+    /// grid — the border of the artwork before the first/last hold centers. Tune
+    /// these four numbers so the overlaid hold cells land on the drawn holds.
     struct ImageInsets {
         var top: CGFloat
         var bottom: CGFloat
         var left: CGFloat
         var right: CGFloat
     }
-    // Measured from the actual hold positions in the board image — do not tweak
-    // by eye. The matrix is asymmetric in the photo, hence the differing sides.
+    // Measured from the actual hold positions in the board artwork — do not tweak
+    // by eye. The matrix is asymmetric in the image, hence the differing sides.
     // Re-measure and replace wholesale if the board image is ever swapped; the
     // DEBUG "Calibrate" toggle on the Board tab visualizes the fit.
     static let imageInsets = ImageInsets(top: 0.059, bottom: 0.042, left: 0.107, right: 0.049)
+
+    /// LED-dot rendering over the artwork, as fractions of a grid cell. The dot is
+    /// drawn below each lit hold to mimic the under-hold LEDs on the real board.
+    /// Calibrate against the artwork with the DEBUG "Calibrate" toggle.
+    static let ledDotSize: CGFloat = 0.25      // diameter, in cell widths/heights
+    static let ledDotOffset: CGFloat = 0.40    // downward shift below hold center, in cell heights
 
     // Grid labels for the UI.
     static func columnLabel(_ col: Int) -> String {

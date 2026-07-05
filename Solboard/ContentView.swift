@@ -200,7 +200,7 @@ struct BoardView: View {
 
     private func holdCell(col: Int, row: Int, cellW: CGFloat, cellH: CGFloat) -> some View {
         let type = grid.type(col: col, row: row)
-        let dot = min(cellW, cellH) * 0.25            // ~1/4 of a cell
+        let dot = min(cellW, cellH) * MoonBoardProtocol.ledDotSize
         return ZStack {
             // Calibration: outline every cell so grid-vs-hold alignment is obvious.
             if calibrating {
@@ -219,7 +219,7 @@ struct BoardView: View {
                     .frame(width: dot, height: dot)
                     .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 0.5))
                     .shadow(color: color(for: type).opacity(0.7), radius: dot * 0.35)
-                    .offset(y: cellH * 0.40)
+                    .offset(y: cellH * MoonBoardProtocol.ledDotOffset)
             }
         }
         .frame(width: cellW, height: cellH)          // full-cell hit target
