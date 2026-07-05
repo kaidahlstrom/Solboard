@@ -41,7 +41,11 @@ struct DiscoveredPeripheral: Identifiable, Equatable {
 @MainActor
 final class BLEManager: NSObject, ObservableObject {
     @Published private(set) var status: ConnectionStatus = .disconnected
+    /// Every named peripheral seen this scan. The Connect list shows `visibleDevices`.
     @Published private(set) var discovered: [DiscoveredPeripheral] = []
+    /// Escape hatch for first contact: show unfiltered results if the real box's
+    /// advertised name doesn't match our MoonBoard heuristic. Toggled from the UI.
+    @Published var showAllDevices = false
     /// Set after a failed/successful send so the UI can surface a one-line result.
     @Published var lastSendError: String?
 
@@ -52,7 +56,26 @@ final class BLEManager: NSObject, ObservableObject {
     private let serviceUUID = CBUUID(string: MoonBoardProtocol.uartService)
     private let txUUID = CBUUID(string: MoonBoardProtocol.uartTX)
 
+    /// Restrict scanning to the Nordic UART service. The UUID is UNCONFIRMED until
+    /// on-site recon (Q1), so this defaults off — a wrong UUID here would make the
+    /// real box undiscoverable, and no UI toggle can recover a filtered-out scan.
+    /// Flip to `true` once the box's service UUID is verified with nRF Connect.
+    private let filterScanByService = false
+
     private let lastPeripheralKey = "lastPeripheralUUID"
+
+    /// The Connect-tab list: all named devices when `showAllDevices`, otherwise
+    /// only those whose name looks like a MoonBoard box.
+    var visibleDevices: [DiscoveredPeripheral] {
+        showAllDevices ? discovered : discovered.filter { Self.looksLikeMoonBoard($0.name) }
+    }
+
+    /// Name contains "moon" (any case), or is a bare 12-digit numeric ID (some
+    /// boxes advertise a serial). Heuristic only — the toggle is the fallback.
+    static func looksLikeMoonBoard(_ name: String) -> Bool {
+        if name.lowercased().contains("moon") { return true }
+        return name.range(of: "^[0-9]{12}$", options: .regularExpression) != nil
+    }
 
     override init() {
         super.init()
@@ -67,9 +90,8 @@ final class BLEManager: NSObject, ObservableObject {
         guard central.state == .poweredOn else { return }
         discovered.removeAll()
         status = .scanning
-        // nil services = discover everything; the box's advertised service is TBD
-        // (Q1). Narrow to [serviceUUID] once confirmed at the gym.
-        central.scanForPeripherals(withServices: nil)
+        let services: [CBUUID]? = filterScanByService ? [serviceUUID] : nil
+        central.scanForPeripherals(withServices: services)
     }
 
     func stopScan() {
