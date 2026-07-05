@@ -113,12 +113,11 @@ enum MoonBoardProtocol {
         var left: CGFloat
         var right: CGFloat
     }
-    // Tuned against a device screenshot: the plain grid ran wider than the hold
-    // matrix, so column A/K cells fell outside the outermost holds. Larger
-    // left/right insets pull the outer columns in onto the first/last hold
-    // columns; top/bottom nudged in for rows 18/1. Fine-tune live with the
-    // DEBUG "Calibrate" toggle on the Board tab (draws all 198 cell outlines).
-    static let imageInsets = ImageInsets(top: 0.08, bottom: 0.08, left: 0.12, right: 0.12)
+    // Measured from the actual hold positions in the board image — do not tweak
+    // by eye. The matrix is asymmetric in the photo, hence the differing sides.
+    // Re-measure and replace wholesale if the board image is ever swapped; the
+    // DEBUG "Calibrate" toggle on the Board tab visualizes the fit.
+    static let imageInsets = ImageInsets(top: 0.059, bottom: 0.042, left: 0.107, right: 0.049)
 
     // Grid labels for the UI.
     static func columnLabel(_ col: Int) -> String {
