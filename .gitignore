@@ -6,7 +6,3 @@ DerivedData/
 xcuserdata/
 *.xcscmblueprint
 *.moved-aside
-
-# Moon Climbing board asset — user-supplied, NOT ours to redistribute.
-# Keep the imageset's Contents.json; never commit the image itself.
-Solboard/Assets.xcassets/board.imageset/*.png

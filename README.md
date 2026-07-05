@@ -20,21 +20,18 @@ up a route on the wall and save presets.
 - **No dependencies.** Swift standard library + SwiftUI + CoreBluetooth only.
 - Presets are stored as a JSON file in the app's Documents directory.
 
-## Board image (you supply your own)
+## Board image (bundled original artwork)
 
-The Board screen can display a **photo of your wall** as the background, with the
-tap cells overlaid transparently and lit holds drawn as colored rings.
+The Board screen renders a hand-drawn board illustration as the background, with
+the tap cells overlaid transparently. Each selected hold shows a small filled
+"LED dot" just below it (green/blue/red by type), mirroring the physical board
+where the LEDs sit under the holds.
 
-This image is a **Moon Climbing asset and is not distributed with this repo.** To
-use it, drop your own photo into the `board` image set at:
-
-```
-Solboard/Assets.xcassets/board.imageset/board.png
-```
-
-The PNG is gitignored and must never be committed. Without it, the app falls back
-to a plain grid. If the rings don't sit on the holds, calibrate the four fractions
-in `MoonBoardProtocol.imageInsets`.
+This image is **original artwork owned by the app author** and ships with the app
+— it lives in the `board` image set and is tracked in git. It is **not** a Moon
+Climbing asset. If it is ever missing, the app falls back to a plain grid. If the
+dots don't sit on the holds, calibrate the four fractions in
+`MoonBoardProtocol.imageInsets`.
 
 ## Build
 

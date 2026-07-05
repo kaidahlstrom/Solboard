@@ -192,15 +192,15 @@ struct BoardView: View {
                 let cx = left + (CGFloat(col) + 0.5) * cellW
                 // row 0 is the bottom of the board, so it maps to the bottom of the image.
                 let cy = top + (CGFloat(MoonBoardProtocol.rows - 1 - row) + 0.5) * cellH
-                ringCell(col: col, row: row, cellW: cellW, cellH: cellH)
+                holdCell(col: col, row: row, cellW: cellW, cellH: cellH)
                     .position(x: cx, y: cy)
             }
         }
     }
 
-    private func ringCell(col: Int, row: Int, cellW: CGFloat, cellH: CGFloat) -> some View {
+    private func holdCell(col: Int, row: Int, cellW: CGFloat, cellH: CGFloat) -> some View {
         let type = grid.type(col: col, row: row)
-        let diameter = min(cellW, cellH) * 0.82
+        let dot = min(cellW, cellH) * 0.25            // ~1/4 of a cell
         return ZStack {
             // Calibration: outline every cell so grid-vs-hold alignment is obvious.
             if calibrating {
@@ -211,12 +211,18 @@ struct BoardView: View {
                     .font(.system(size: 6))
                     .foregroundStyle(Color.yellow)
             }
-            Circle()
-                .strokeBorder(color(for: type), lineWidth: type == nil ? 1 : 3)
-                .frame(width: diameter, height: diameter)
-                .opacity(type == nil ? (calibrating ? 0.6 : 0.3) : 1)   // empty: faint tap hint
+            // Lit hold: a filled LED dot just BELOW the hold, like the real board
+            // where the LEDs sit under each hold. Offset ~40% of a cell downward.
+            if let type {
+                Circle()
+                    .fill(color(for: type))
+                    .frame(width: dot, height: dot)
+                    .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 0.5))
+                    .shadow(color: color(for: type).opacity(0.7), radius: dot * 0.35)
+                    .offset(y: cellH * 0.40)
+            }
         }
-        .frame(width: cellW, height: cellH)       // full-cell hit target
+        .frame(width: cellW, height: cellH)          // full-cell hit target
         .contentShape(Rectangle())
         .onTapGesture { grid.cycle(col: col, row: row) }
     }
