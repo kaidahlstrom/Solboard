@@ -59,6 +59,10 @@ struct BoardView: View {
             }
 
             buttonRow
+
+            #if DEBUG
+            debugPanel
+            #endif
         }
         .padding()
         .alert("Save preset", isPresented: $showingSave) {
@@ -71,6 +75,31 @@ struct BoardView: View {
             Button("Cancel", role: .cancel) { presetName = "" }
         }
     }
+
+    #if DEBUG
+    /// TEMPORARY on-screen write-path diagnostics. Remove with BLEDebug once fixed.
+    private var debugPanel: some View {
+        let d = ble.debug
+        return VStack(alignment: .leading, spacing: 2) {
+            Text("DEBUG · write path").font(.system(size: 10, weight: .bold, design: .monospaced))
+            Text("peripheral: \(d.peripheralName ?? "—")")
+            Text("writeChar: \(d.characteristicUUID ?? "nil")")
+                .foregroundStyle(d.characteristicUUID == nil ? Color.red : Color.secondary)
+            Text("props: [\(d.characteristicProps ?? "—")]  type: \(d.lastWriteType ?? "—")")
+            Text("ack: \(d.lastWriteAck ?? "—")  taps: \(d.sendCount)")
+            Text("payload: \(d.lastPayload ?? "—")")
+            Text("bytes: \(d.lastBytesHex ?? "—")")
+            Text("error: \(d.lastError ?? "none")")
+                .foregroundStyle(d.lastError == nil ? Color.secondary : Color.red)
+        }
+        .font(.system(size: 10, design: .monospaced))
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+    #endif
 
     private var statusBar: some View {
         HStack {

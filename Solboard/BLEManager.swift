@@ -38,6 +38,20 @@ struct DiscoveredPeripheral: Identifiable, Equatable {
     static func == (a: DiscoveredPeripheral, b: DiscoveredPeripheral) -> Bool { a.id == b.id }
 }
 
+/// TEMPORARY write-path diagnostics, surfaced on-screen to chase the silent-write
+/// bug. Remove once the write path is confirmed working.
+struct BLEDebug: Equatable {
+    var peripheralName: String?
+    var characteristicUUID: String?     // should be 6E400002 (NUS RX)
+    var characteristicProps: String?    // advertised write capabilities
+    var lastPayload: String?            // exact ASCII command written
+    var lastBytesHex: String?           // raw bytes actually written
+    var lastWriteType: String?          // withResponse / withoutResponse
+    var lastWriteAck: String?           // result of a with-response write
+    var lastError: String?
+    var sendCount = 0                    // increments on every Light-it tap
+}
+
 @MainActor
 final class BLEManager: NSObject, ObservableObject {
     @Published private(set) var status: ConnectionStatus = .disconnected
@@ -45,6 +59,8 @@ final class BLEManager: NSObject, ObservableObject {
     @Published private(set) var discovered: [DiscoveredPeripheral] = []
     /// Set after a failed/successful send so the UI can surface a one-line result.
     @Published var lastSendError: String?
+    /// TEMPORARY: live write-path diagnostics for the Board-tab debug panel.
+    @Published private(set) var debug = BLEDebug()
 
     private var central: CBCentralManager!
     private var connected: CBPeripheral?
@@ -120,17 +136,49 @@ final class BLEManager: NSObject, ObservableObject {
 
     /// Write a route to the board. Safe to call when not ready — it just reports.
     func send(_ holds: [Hold]) {
+        debug.sendCount += 1                       // proves the tap reached here (Q3)
         guard let peripheral = connected, let tx = writeCharacteristic else {
             lastSendError = "Not connected"
+            debug.lastError = "send: connected=\(connected != nil) writeChar=\(writeCharacteristic != nil)"
+            log("send aborted — \(debug.lastError ?? "")")
             return
         }
         lastSendError = nil
-        let data = MoonBoardProtocol.payload(for: holds)
+        let command = MoonBoardProtocol.command(for: holds)
+        let data = Data(command.utf8)
         // A full route is a short ASCII string (well under the BLE MTU), so no
         // chunking is needed. Prefer write-without-response when supported.
-        let type: CBCharacteristicWriteType =
-            tx.properties.contains(.writeWithoutResponse) ? .withoutResponse : .withResponse
+        let supportsNoResp = tx.properties.contains(.writeWithoutResponse)
+        let type: CBCharacteristicWriteType = supportsNoResp ? .withoutResponse : .withResponse
+
+        debug.peripheralName = peripheral.name
+        debug.characteristicUUID = tx.uuid.uuidString
+        debug.characteristicProps = Self.propsString(tx.properties)
+        debug.lastPayload = command
+        debug.lastBytesHex = data.map { String(format: "%02X", $0) }.joined(separator: " ")
+        debug.lastWriteType = supportsNoResp ? "withoutResponse" : "withResponse"
+        debug.lastWriteAck = supportsNoResp ? "n/a (no ack)" : "pending…"
+        debug.lastError = nil
+        log("write \(tx.uuid) props=[\(debug.characteristicProps ?? "")] type=\(debug.lastWriteType ?? "")")
+        log("payload=\"\(command)\" bytes=\(debug.lastBytesHex ?? "")")
+
         peripheral.writeValue(data, for: tx, type: type)
+    }
+
+    /// Human-readable string of a characteristic's write-relevant properties.
+    static func propsString(_ p: CBCharacteristicProperties) -> String {
+        var parts: [String] = []
+        if p.contains(.write)                { parts.append("write") }
+        if p.contains(.writeWithoutResponse) { parts.append("writeNoResp") }
+        if p.contains(.notify)               { parts.append("notify") }
+        if p.contains(.read)                 { parts.append("read") }
+        return parts.isEmpty ? "none" : parts.joined(separator: "|")
+    }
+
+    private func log(_ message: String) {
+        #if DEBUG
+        print("[BLE] \(message)")
+        #endif
     }
 }
 
@@ -187,6 +235,8 @@ extension BLEManager: CBCentralManagerDelegate {
         Task { @MainActor in
             connected = nil
             writeCharacteristic = nil
+            debug.characteristicUUID = nil
+            debug.characteristicProps = nil
             status = .disconnected
         }
     }
@@ -212,8 +262,28 @@ extension BLEManager: CBPeripheralDelegate {
                     || char.properties.contains(.writeWithoutResponse)
                 if char.uuid == rxUUID || (writeCharacteristic == nil && writable) {
                     writeCharacteristic = char
+                    debug.peripheralName = peripheral.name
+                    debug.characteristicUUID = char.uuid.uuidString
+                    debug.characteristicProps = Self.propsString(char.properties)
                     status = .connected(peripheral.name ?? "MoonBoard")
+                    log("picked writeChar \(char.uuid) props=[\(debug.characteristicProps ?? "")]")
                 }
+            }
+        }
+    }
+
+    nonisolated func peripheral(_ peripheral: CBPeripheral,
+                                didWriteValueFor characteristic: CBCharacteristic,
+                                error: Error?) {
+        Task { @MainActor in
+            if let error {
+                lastSendError = error.localizedDescription
+                debug.lastWriteAck = "error"
+                debug.lastError = error.localizedDescription
+                log("write ack ERROR: \(error.localizedDescription)")
+            } else {
+                debug.lastWriteAck = "ok"
+                log("write ack OK for \(characteristic.uuid)")
             }
         }
     }
