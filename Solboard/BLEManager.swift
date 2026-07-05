@@ -3,7 +3,7 @@
 //  Solboard
 //
 //  CoreBluetooth is the ONLY radio this app uses (see CLAUDE.md hard constraints).
-//  Scans for the LED box, connects, discovers the Nordic-UART TX characteristic,
+//  Scans for the LED box, connects, discovers the Nordic-UART RX characteristic,
 //  and writes route command strings. Auto-reconnects to the last box on launch.
 //
 
@@ -51,16 +51,14 @@ final class BLEManager: NSObject, ObservableObject {
 
     private var central: CBCentralManager!
     private var connected: CBPeripheral?
-    private var txCharacteristic: CBCharacteristic?
+    private var writeCharacteristic: CBCharacteristic?
 
     private let serviceUUID = CBUUID(string: MoonBoardProtocol.uartService)
-    private let txUUID = CBUUID(string: MoonBoardProtocol.uartTX)
+    private let rxUUID = CBUUID(string: MoonBoardProtocol.uartRX)
 
-    /// Restrict scanning to the Nordic UART service. The UUID is UNCONFIRMED until
-    /// on-site recon (Q1), so this defaults off — a wrong UUID here would make the
-    /// real box undiscoverable, and no UI toggle can recover a filtered-out scan.
-    /// Flip to `true` once the box's service UUID is verified with nRF Connect.
-    private let filterScanByService = false
+    /// Restrict scanning to the Nordic UART service. Confirmed on-site, so this is
+    /// on. Set false only to troubleshoot if the box stops advertising the service.
+    private let filterScanByService = true
 
     private let lastPeripheralKey = "lastPeripheralUUID"
 
@@ -82,7 +80,7 @@ final class BLEManager: NSObject, ObservableObject {
         central = CBCentralManager(delegate: self, queue: nil)
     }
 
-    var isReady: Bool { txCharacteristic != nil }
+    var isReady: Bool { writeCharacteristic != nil }
 
     // MARK: Scanning / connecting
 
@@ -128,14 +126,14 @@ final class BLEManager: NSObject, ObservableObject {
 
     /// Write a route to the board. Safe to call when not ready — it just reports.
     func send(_ holds: [Hold]) {
-        guard let peripheral = connected, let tx = txCharacteristic else {
+        guard let peripheral = connected, let tx = writeCharacteristic else {
             lastSendError = "Not connected"
             return
         }
         lastSendError = nil
         let data = MoonBoardProtocol.payload(for: holds)
-        // Prefer write-without-response when the characteristic supports it; the
-        // V4/V5 box's exact expectation is a gym-day open question (Q4).
+        // A full route is a short ASCII string (well under the BLE MTU), so no
+        // chunking is needed. Prefer write-without-response when supported.
         let type: CBCharacteristicWriteType =
             tx.properties.contains(.writeWithoutResponse) ? .withoutResponse : .withResponse
         peripheral.writeValue(data, for: tx, type: type)
@@ -176,7 +174,7 @@ extension BLEManager: CBCentralManagerDelegate {
                                     didConnect peripheral: CBPeripheral) {
         Task { @MainActor in
             UserDefaults.standard.set(peripheral.identifier.uuidString, forKey: lastPeripheralKey)
-            peripheral.discoverServices(nil)   // narrow to [serviceUUID] post-gym
+            peripheral.discoverServices([serviceUUID])   // confirmed on-site
         }
     }
 
@@ -194,7 +192,7 @@ extension BLEManager: CBCentralManagerDelegate {
                                     error: Error?) {
         Task { @MainActor in
             connected = nil
-            txCharacteristic = nil
+            writeCharacteristic = nil
             status = .disconnected
         }
     }
@@ -214,12 +212,12 @@ extension BLEManager: CBPeripheralDelegate {
                                 error: Error?) {
         Task { @MainActor in
             for char in service.characteristics ?? [] {
-                // Match the confirmed TX UUID, or fall back to any writable
-                // characteristic until UUIDs are pinned down at the gym (Q1).
+                // Match the confirmed RX (write) UUID; fall back to any writable
+                // characteristic as a safety net.
                 let writable = char.properties.contains(.write)
                     || char.properties.contains(.writeWithoutResponse)
-                if char.uuid == txUUID || (txCharacteristic == nil && writable) {
-                    txCharacteristic = char
+                if char.uuid == rxUUID || (writeCharacteristic == nil && writable) {
+                    writeCharacteristic = char
                     status = .connected(peripheral.name ?? "MoonBoard")
                 }
             }

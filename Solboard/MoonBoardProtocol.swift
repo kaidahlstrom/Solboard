@@ -47,32 +47,16 @@ enum MoonBoardProtocol {
     static let rows = 18             // 1 ... 18
     static var holdCount: Int { columns * rows }   // 198
 
-    // ---- Gym-day tunables (Q2/Q3 in CLAUDE.md). Flip after the test pattern. ----
-
-    /// Q2: community sources conflict. e-sr docs say positions run 1–198;
-    /// some Arduino builds index A1 = 0. Set false if the box is 0-based.
-    static let positionsAreOneBased = true
-
-    /// Q3: the LED strip runs serpentine up the columns. `true` means column A
-    /// (the first column) counts upward with the row numbers; adjacent columns
-    /// alternate direction. Flip if the lit holds come out vertically mirrored.
-    static let firstColumnRunsUpward = true
-
-    /// If the strip physically starts at column K instead of A, set false so the
-    /// position count begins from the right. Flip if columns come out mirrored.
-    static let firstColumnIsA = true
-
     // MARK: Pure mapping — (column, row, holdType) -> command fragment
 
-    /// LED position (respecting `positionsAreOneBased`) for a 0-based grid cell.
-    /// Serpentine: consecutive columns run in opposite vertical directions.
+    /// LED position for a 0-based grid cell (col A=0..K=10, row 0..17 bottom-up).
+    ///
+    /// Confirmed on-site (nRF Connect): positions are 0-based, range 0–197,
+    /// straight column-major with NO serpentine. `col * 18 + row`.
+    /// Verified mappings: 0→A1, 17→A18, 50→C15, 197→K18. Out-of-range positions
+    /// are silently ignored by the box.
     static func position(col: Int, row: Int) -> Int {
-        let colIndex = firstColumnIsA ? col : (columns - 1 - col)
-        // Even column index runs in the seed direction, odd runs reversed.
-        let runsUpward = (colIndex % 2 == 0) == firstColumnRunsUpward
-        let within = runsUpward ? row : (rows - 1 - row)
-        let zeroBased = colIndex * rows + within
-        return positionsAreOneBased ? zeroBased + 1 : zeroBased
+        col * rows + row
     }
 
     /// Single hold as its protocol fragment, e.g. `S5`, `P90`, `E198`.
@@ -89,17 +73,17 @@ enum MoonBoardProtocol {
         return "l#" + fragments.joined(separator: ",") + "#"
     }
 
-    /// UTF-8 bytes to write to the UART TX characteristic.
+    /// UTF-8 bytes to write to the UART RX characteristic.
     static func payload(for holds: [Hold]) -> Data {
         Data(command(for: holds).utf8)
     }
 
-    // MARK: BLE identifiers (Q1) — CONFIRM AT THE GYM with nRF Connect, then set.
+    // MARK: BLE identifiers — CONFIRMED on-site (nRF Connect). Board name "MoonBoard A".
 
-    /// Nordic UART Service. This is the standard NUS UUID; verify the box uses it.
+    /// Nordic UART Service — confirmed standard NUS UUID.
     static let uartService = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
-    /// TX characteristic (write). Verify UUID + whether it's write-with-response.
-    static let uartTX = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
+    /// NUS RX characteristic — the central WRITES route commands here. Confirmed.
+    static let uartRX = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 
     // MARK: Board image overlay calibration (gym-day tunable, one place)
 

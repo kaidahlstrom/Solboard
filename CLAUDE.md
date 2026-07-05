@@ -13,12 +13,12 @@ Minimal iPhone app to control a MoonBoard LED climbing wall over Bluetooth LE. P
 ## Target hardware
 
 - MoonBoard 2024 setup: full-size board, 11 columns (A–K) × 18 rows (1–18), 198 holds.
-- LED control box: Moon Climbing V4/V5 (exact model TBD — verified at the gym via nRF Connect).
-- BLE: Nordic UART-style service. Exact service/characteristic UUIDs to be confirmed on-site and recorded below.
+- LED control box: Moon Climbing V4/V5. Advertises as **"MoonBoard A"** (confirmed on-site via nRF Connect).
+- BLE: standard Nordic UART Service, confirmed on-site. Service `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`; route commands are written to the RX characteristic `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`.
 
 ### Protocol (community reverse-engineered)
 
-Commands are ASCII strings written to the UART TX characteristic:
+Commands are ASCII strings written to the UART RX characteristic (`6E400002`):
 
 ```
 l#<hold>,<hold>,...#
@@ -30,13 +30,13 @@ l#<hold>,<hold>,...#
   - `P` = progress/move hold (blue)
   - `E` = end hold (red)
 - Example: `l#S5,P9,P13,E18#`
-- Position range 1–198, following the LED strip through the grid.
+- Position range **0–197**, straight column-major (see Q2/Q3 below). Out-of-range positions are silently ignored by the box.
 
-**Open questions to resolve at the gym (do not guess):**
-1. Exact service + characteristic UUIDs.
-2. Whether positions are 0-based or 1-based on this box (community sources conflict: e-sr docs say 1–198, Arduino implementations index A1=0).
-3. Grid-to-position mapping direction: strips typically run serpentine (A1 up column or along row, alternating). Verify with a known test pattern.
-4. Whether the V4/V5 box expects any framing prefix, MTU chunking, or write-with-response vs. write-without-response.
+**Open questions — all RESOLVED on-site (nRF Connect + test pattern):**
+1. ✅ **Service + characteristic UUIDs.** Standard Nordic UART Service. Service `6E400001-…`; write target is the RX characteristic `6E400002-…`. Board advertises as "MoonBoard A".
+2. ✅ **0- vs 1-based.** **0-based**, range 0–197. (`positionsAreOneBased` alternative removed.)
+3. ✅ **Mapping direction.** Straight **column-major, no serpentine**: `position = columnIndex*18 + (rowIndex-1)`, A=0..K=10, rows 1..18. Verified 0→A1, 17→A18, 50→C15, 197→K18. (Serpentine constants removed.)
+4. ✅ **Framing / MTU / write mode.** No extra framing beyond `l#…#`. A full route is a short ASCII string well under the BLE MTU, so no chunking. Writes go to RX; the app auto-selects write-without-response when the characteristic advertises it, else write-with-response.
 
 Isolate all of this in one file (`MoonBoardProtocol.swift`) with the mapping as a pure function `(column, row, holdType) -> command fragment`, so gym-day fixes touch one place.
 
