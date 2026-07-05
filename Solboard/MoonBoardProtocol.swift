@@ -28,6 +28,16 @@ enum HoldType: String, Codable, CaseIterable, Identifiable {
         case .end:   return nil
         }
     }
+
+    /// Emission order in the command string. The box silently ignores payloads
+    /// that aren't grouped S → P → E, so this is load-bearing, not cosmetic.
+    var sortRank: Int {
+        switch self {
+        case .start: return 0
+        case .move:  return 1
+        case .end:   return 2
+        }
+    }
 }
 
 /// One lit hold. `col` is 0-based (A=0 ... K=10); `row` is 0-based bottom-up
@@ -65,10 +75,17 @@ enum MoonBoardProtocol {
     }
 
     /// Full command string for a route: `l#S5,P9,P13,E18#`.
-    /// Holds are emitted in position order for a stable, reproducible payload.
+    /// Holds MUST be grouped by type (all S, then P, then E) — the box silently
+    /// ignores payloads that aren't. Within a type, sort by position ascending
+    /// for a stable, reproducible payload.
     static func command(for holds: [Hold]) -> String {
         let fragments = holds
-            .sorted { position(col: $0.col, row: $0.row) < position(col: $1.col, row: $1.row) }
+            .sorted { a, b in
+                if a.type.sortRank != b.type.sortRank {
+                    return a.type.sortRank < b.type.sortRank
+                }
+                return position(col: a.col, row: a.row) < position(col: b.col, row: b.row)
+            }
             .map(fragment(for:))
         return "l#" + fragments.joined(separator: ",") + "#"
     }
