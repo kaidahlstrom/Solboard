@@ -61,12 +61,15 @@ enum MoonBoardProtocol {
 
     /// LED position for a 0-based grid cell (col A=0..K=10, row 0..17 bottom-up).
     ///
-    /// Confirmed on-site (nRF Connect): positions are 0-based, range 0–197,
-    /// straight column-major with NO serpentine. `col * 18 + row`.
-    /// Verified mappings: 0→A1, 17→A18, 50→C15, 197→K18. Out-of-range positions
-    /// are silently ignored by the box.
+    /// Confirmed on-wall: positions are 0-based, range 0–197, laid out SERPENTINE.
+    /// Even column indices run bottom-up; odd column indices run top-down.
+    /// (Initial recon missed the serpentine because A1/C15/K18 all sit in even
+    /// columns, where both layouts agree.) Verified mappings: 0→A1, 17→A18,
+    /// 50→C15, 58→D14, 67→D5, 197→K18. Out-of-range positions are silently
+    /// ignored by the box.
     static func position(col: Int, row: Int) -> Int {
-        col * rows + row
+        let within = (col % 2 == 0) ? row : (rows - 1 - row)
+        return col * rows + within
     }
 
     /// Single hold as its protocol fragment, e.g. `S5`, `P90`, `E198`.

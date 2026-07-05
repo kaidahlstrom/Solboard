@@ -30,13 +30,13 @@ l#<hold>,<hold>,...#
   - `P` = progress/move hold (blue)
   - `E` = end hold (red)
 - Example (real 0-based positions): `l#S0,P50,E197#` = start on A1 (pos 0), move on C15 (pos 50), end on K18 (pos 197).
-- Position range **0–197**, straight column-major (see Q2/Q3 below). Out-of-range positions are silently ignored by the box.
+- Position range **0–197**, serpentine column-major (see Q2/Q3 below). Out-of-range positions are silently ignored by the box.
 
 **Open questions — all RESOLVED on-site (nRF Connect + test pattern):**
 1. ✅ **Service + characteristic UUIDs.** Standard Nordic UART Service. Service `6E400001-…`; write target is the RX characteristic `6E400002-…`. Board advertises as "MoonBoard A".
 2. ✅ **0- vs 1-based.** **0-based**, range 0–197. (`positionsAreOneBased` alternative removed.)
-3. ✅ **Mapping direction.** Straight **column-major, no serpentine**: `position = columnIndex*18 + (rowIndex-1)`, A=0..K=10, rows 1..18. Verified 0→A1, 17→A18, 50→C15, 197→K18. (Serpentine constants removed.)
-4. ✅ **Framing / MTU / write mode.** No extra framing beyond `l#…#`. A full route is a short ASCII string well under the BLE MTU, so no chunking. Writes go to RX; the app auto-selects write-without-response when the characteristic advertises it, else write-with-response.
+3. ✅ **Mapping direction.** **Serpentine column-major** (A=0..K=10, rows r=1..18): `position = c*18 + (r-1)` for even column index `c`, `c*18 + (18-r)` for odd `c`. Even columns run bottom-up, odd columns run top-down. Verified 0→A1, 17→A18, 50→C15, **58→D14, 67→D5**, 197→K18. (Initial recon read it as straight column-major because A1/C15/K18 all fall in even columns, where both layouts agree.)
+4. ✅ **Framing / MTU / write mode.** No extra framing beyond `l#…#`, but the box is an old Nordic chip with a **23-byte ATT MTU** — writes over 20 bytes are silently dropped. The app chunks the command into ≤20-byte pieces and writes them **sequentially with write-with-response**, waiting for each ack before the next; the framing lets the box reassemble.
 
 Isolate all of this in one file (`MoonBoardProtocol.swift`) with the mapping as a pure function `(column, row, holdType) -> command fragment`, so gym-day fixes touch one place.
 
