@@ -120,7 +120,7 @@ enum MoonBoardProtocol {
     // by eye. The matrix is asymmetric in the image, hence the differing sides.
     // Re-measure and replace wholesale if the board image is ever swapped; the
     // DEBUG "Calibrate" toggle on the Board tab visualizes the fit.
-    static let imageInsets = ImageInsets(top: 0.059, bottom: 0.042, left: 0.107, right: 0.049)
+    static let imageInsets = ImageInsets(top: 0.008, bottom: 0.002, left: 0.022, right: 0.042)
 
     /// LED-dot rendering over the artwork, as fractions of a grid cell. The dot is
     /// drawn below each lit hold to mimic the under-hold LEDs on the real board.
