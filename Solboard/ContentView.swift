@@ -54,7 +54,18 @@ struct BoardView: View {
     /// DEBUG-only: reveal the write-path diagnostics panel.
     @State private var showDebug = false
 
-    /// User-supplied board photo (gitignored, never redistributed). Absent = fallback grid.
+    // Zoom/pan of the whole board (image + tap cells + LED dots + calibrate
+    // overlay move as one unit, so alignment is preserved at any zoom).
+    @State private var zoomScale: CGFloat = 1
+    @State private var zoomOffset: CGSize = .zero
+    private let minZoom: CGFloat = 1
+    private let maxZoom: CGFloat = 3
+    // Per-gesture baselines, captured on the first change of each gesture.
+    @State private var pinchBaseScale: CGFloat?
+    @State private var pinchBaseOffset: CGSize?
+    @State private var dragBaseOffset: CGSize?
+
+    /// Bundled original board artwork. Absent = fallback plain grid.
     private var boardImage: UIImage? { UIImage(named: "board") }
 
     var body: some View {
@@ -165,7 +176,9 @@ struct BoardView: View {
 
     // MARK: Board image with transparent tap cells + colored hold rings
 
-    private func boardImageView(_ img: UIImage) -> some View {
+    /// The board image plus its hold overlay, sized 1:1 with no letterboxing so
+    /// the overlay maps directly onto the artwork. Sized by the caller.
+    private func boardContent(_ img: UIImage) -> some View {
         ZStack {
             Image(uiImage: img)
                 .resizable()
@@ -173,10 +186,99 @@ struct BoardView: View {
                 holdsOverlay(in: geo.size)
             }
         }
-        // Match the image's aspect ratio exactly so the overlay maps 1:1 with
-        // no letterboxing — cell centers then align with the calibrated insets.
-        .aspectRatio(img.size.width / img.size.height, contentMode: .fit)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Zoomable/pannable board. The image, tap cells, LED dots, and calibrate
+    /// overlay are transformed together, so hit targets stay aligned at any zoom.
+    private func boardImageView(_ img: UIImage) -> some View {
+        let ar = img.size.width / img.size.height
+        return GeometryReader { geo in
+            let area = geo.size
+            let fit = fittedSize(imageAspect: ar, in: area)
+            let displayOffset = clampedOffset(zoomOffset, scale: zoomScale, fit: fit, area: area)
+
+            ZStack(alignment: .topLeading) {
+                Color.clear                                  // pin top-leading origin, fill area
+                boardContent(img)
+                    .frame(width: fit.width, height: fit.height)
+                    .scaleEffect(zoomScale, anchor: .topLeading)
+                    .offset(displayOffset)
+            }
+            .frame(width: area.width, height: area.height)
+            .clipped()
+            .contentShape(Rectangle())
+            // Pinch to zoom, anchored at the pinch location (offset-compensated).
+            .simultaneousGesture(
+                MagnifyGesture()
+                    .onChanged { value in
+                        let curScale = pinchBaseScale ?? zoomScale
+                        let curOffset = pinchBaseOffset
+                            ?? clampedOffset(zoomOffset, scale: zoomScale, fit: fit, area: area)
+                        if pinchBaseScale == nil {
+                            pinchBaseScale = curScale
+                            pinchBaseOffset = curOffset
+                        }
+                        let newScale = min(max(curScale * value.magnification, minZoom), maxZoom)
+                        // Keep the point under the fingers fixed on screen.
+                        let focal = value.startLocation
+                        let fx = (focal.x - curOffset.width) / curScale
+                        let fy = (focal.y - curOffset.height) / curScale
+                        let proposed = CGSize(width: focal.x - fx * newScale,
+                                              height: focal.y - fy * newScale)
+                        zoomScale = newScale
+                        zoomOffset = clampedOffset(proposed, scale: newScale, fit: fit, area: area)
+                    }
+                    .onEnded { _ in
+                        pinchBaseScale = nil
+                        pinchBaseOffset = nil
+                    }
+            )
+            // Single-finger drag to pan while zoomed (min distance keeps taps free).
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 10)
+                    .onChanged { value in
+                        let base = dragBaseOffset
+                            ?? clampedOffset(zoomOffset, scale: zoomScale, fit: fit, area: area)
+                        if dragBaseOffset == nil { dragBaseOffset = base }
+                        let proposed = CGSize(width: base.width + value.translation.width,
+                                              height: base.height + value.translation.height)
+                        zoomOffset = clampedOffset(proposed, scale: zoomScale, fit: fit, area: area)
+                    }
+                    .onEnded { _ in dragBaseOffset = nil }
+            )
+            // Double-tap to reset to fit. High priority so it wins over cell taps;
+            // a single tap fails the count and falls through to tap-to-cycle.
+            .highPriorityGesture(
+                TapGesture(count: 2).onEnded {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        zoomScale = 1
+                        zoomOffset = .zero
+                    }
+                }
+            )
+        }
+    }
+
+    /// Aspect-fit an image of aspect ratio `ar` inside `area`.
+    private func fittedSize(imageAspect ar: CGFloat, in area: CGSize) -> CGSize {
+        guard area.width > 0, area.height > 0, ar > 0 else { return .zero }
+        if ar > area.width / area.height {
+            return CGSize(width: area.width, height: area.width / ar)
+        } else {
+            return CGSize(width: area.height * ar, height: area.height)
+        }
+    }
+
+    /// Clamp the board's top-leading offset: center each axis while the scaled
+    /// content is smaller than the area, otherwise keep it covering the area
+    /// (no panning past the image edges).
+    private func clampedOffset(_ proposed: CGSize, scale: CGFloat, fit: CGSize, area: CGSize) -> CGSize {
+        func axis(_ v: CGFloat, content: CGFloat, avail: CGFloat) -> CGFloat {
+            if content <= avail { return (avail - content) / 2 }
+            return min(0, max(avail - content, v))
+        }
+        return CGSize(width: axis(proposed.width, content: fit.width * scale, avail: area.width),
+                      height: axis(proposed.height, content: fit.height * scale, avail: area.height))
     }
 
     private func holdsOverlay(in size: CGSize) -> some View {
