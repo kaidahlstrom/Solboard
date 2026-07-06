@@ -125,8 +125,8 @@ enum MoonBoardProtocol {
     /// LED-dot rendering over the artwork, as fractions of a grid cell. The dot is
     /// drawn below each lit hold to mimic the under-hold LEDs on the real board.
     /// Calibrate against the artwork with the DEBUG "Calibrate" toggle.
-    static let ledDotSize: CGFloat = 0.25      // diameter, in cell widths/heights
-    static let ledDotOffset: CGFloat = 0.40    // downward shift below hold center, in cell heights
+    static let ledDotSize: CGFloat = 0.175     // diameter, in cell widths/heights
+    static let ledDotOffset: CGFloat = 0.50    // downward shift below hold center, in cell heights (≈ midway to the hold below)
 
     // Grid labels for the UI.
     static func columnLabel(_ col: Int) -> String {
