@@ -176,20 +176,12 @@ struct BoardView: View {
 
     // MARK: Board image with transparent tap cells + colored hold rings
 
-    /// The board image plus its hold overlay, sized 1:1 with no letterboxing so
-    /// the overlay maps directly onto the artwork. Sized by the caller.
-    private func boardContent(_ img: UIImage) -> some View {
-        ZStack {
-            Image(uiImage: img)
-                .resizable()
-            GeometryReader { geo in
-                holdsOverlay(in: geo.size)
-            }
-        }
-    }
-
     /// Zoomable/pannable board. The image, tap cells, LED dots, and calibrate
     /// overlay are transformed together, so hit targets stay aligned at any zoom.
+    /// The board content is a separate Equatable view (`BoardContent`) so the
+    /// 198-cell overlay is NOT rebuilt on every pinch/pan frame — only the
+    /// scale/offset transform updates. Zoom lives in local @State (never in the
+    /// observed BLE object), so gestures don't invalidate any published state.
     private func boardImageView(_ img: UIImage) -> some View {
         let ar = img.size.width / img.size.height
         return GeometryReader { geo in
@@ -199,10 +191,13 @@ struct BoardView: View {
 
             ZStack(alignment: .topLeading) {
                 Color.clear                                  // pin top-leading origin, fill area
-                boardContent(img)
-                    .frame(width: fit.width, height: fit.height)
-                    .scaleEffect(zoomScale, anchor: .topLeading)
-                    .offset(displayOffset)
+                BoardContent(image: img, grid: grid, calibrating: calibrating) { c, r in
+                    grid.cycle(col: c, row: r)
+                }
+                .equatable()                                 // skip body when grid/calibrating unchanged
+                .frame(width: fit.width, height: fit.height)
+                .scaleEffect(zoomScale, anchor: .topLeading)
+                .offset(displayOffset)
             }
             .frame(width: area.width, height: area.height)
             .clipped()
@@ -246,16 +241,26 @@ struct BoardView: View {
                     }
                     .onEnded { _ in dragBaseOffset = nil }
             )
-            // Double-tap to reset to fit. High priority so it wins over cell taps;
-            // a single tap fails the count and falls through to tap-to-cycle.
-            .highPriorityGesture(
-                TapGesture(count: 2).onEnded {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        zoomScale = 1
-                        zoomOffset = .zero
+            // Reset-to-fit button, shown only while zoomed. No double-tap gesture
+            // anywhere near the cells, so a single tap-to-cycle NEVER waits on
+            // double-tap disambiguation — it fires immediately.
+            .overlay(alignment: .topTrailing) {
+                if zoomScale > 1 {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            zoomScale = 1
+                            zoomOffset = .zero
+                        }
+                    } label: {
+                        Image(systemName: "arrow.down.right.and.arrow.up.left")
+                            .font(.system(size: 14, weight: .semibold))
+                            .padding(8)
+                            .background(.thinMaterial, in: Circle())
                     }
+                    .padding(8)
+                    .accessibilityLabel("Reset zoom")
                 }
-            )
+            }
         }
     }
 
@@ -281,62 +286,7 @@ struct BoardView: View {
                       height: axis(proposed.height, content: fit.height * scale, avail: area.height))
     }
 
-    private func holdsOverlay(in size: CGSize) -> some View {
-        let ins = MoonBoardProtocol.imageInsets
-        let left = size.width * ins.left
-        let top = size.height * ins.top
-        let gridW = size.width * (1 - ins.left - ins.right)
-        let gridH = size.height * (1 - ins.top - ins.bottom)
-        let cellW = gridW / CGFloat(MoonBoardProtocol.columns)
-        let cellH = gridH / CGFloat(MoonBoardProtocol.rows)
-        return ForEach(0..<MoonBoardProtocol.rows, id: \.self) { row in
-            ForEach(0..<MoonBoardProtocol.columns, id: \.self) { col in
-                let cx = left + (CGFloat(col) + 0.5) * cellW
-                // row 0 is the bottom of the board, so it maps to the bottom of the image.
-                let cy = top + (CGFloat(MoonBoardProtocol.rows - 1 - row) + 0.5) * cellH
-                holdCell(col: col, row: row, cellW: cellW, cellH: cellH)
-                    .position(x: cx, y: cy)
-            }
-        }
-    }
-
-    private func holdCell(col: Int, row: Int, cellW: CGFloat, cellH: CGFloat) -> some View {
-        let type = grid.type(col: col, row: row)
-        let dot = min(cellW, cellH) * MoonBoardProtocol.ledDotSize
-        return ZStack {
-            // Calibration: outline every cell so grid-vs-hold alignment is obvious.
-            if calibrating {
-                Rectangle()
-                    .strokeBorder(Color.yellow, lineWidth: 0.75)
-                    .frame(width: cellW, height: cellH)
-                Text("\(MoonBoardProtocol.columnLabel(col))\(MoonBoardProtocol.rowLabel(row))")
-                    .font(.system(size: 6))
-                    .foregroundStyle(Color.yellow)
-            }
-            // Lit hold: a filled LED dot just BELOW the hold, like the real board
-            // where the LEDs sit under each hold. Offset ~40% of a cell downward.
-            if let type {
-                Circle()
-                    .fill(color(for: type))
-                    .frame(width: dot, height: dot)
-                    .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 0.5))
-                    .shadow(color: color(for: type).opacity(0.7), radius: dot * 0.35)
-                    .offset(y: cellH * MoonBoardProtocol.ledDotOffset)
-            }
-        }
-        .frame(width: cellW, height: cellH)          // full-cell hit target
-        .contentShape(Rectangle())
-        .onTapGesture { grid.cycle(col: col, row: row) }
-    }
-
-    private func color(for type: HoldType?) -> Color {
-        switch type {
-        case .start: return .green
-        case .move:  return .blue
-        case .end:   return .red
-        case .none:  return Color(.secondarySystemBackground)
-        }
-    }
+    private func color(for type: HoldType?) -> Color { holdColor(type) }
 
     private var buttonRow: some View {
         VStack(spacing: 8) {
@@ -357,6 +307,90 @@ struct BoardView: View {
                     .disabled(grid.isEmpty || !ble.isReady)
             }
         }
+    }
+}
+
+/// Green/blue/red by hold type; neutral fill when empty. Shared by the board
+/// overlay and the plain-grid fallback.
+private func holdColor(_ type: HoldType?) -> Color {
+    switch type {
+    case .start: return .green
+    case .move:  return .blue
+    case .end:   return .red
+    case .none:  return Color(.secondarySystemBackground)
+    }
+}
+
+/// The board image plus its 198-cell overlay (tap targets, LED dots, calibrate
+/// grid). A dedicated `Equatable` view so SwiftUI can skip rebuilding all the
+/// cells when only the zoom transform changes — its body re-runs solely when the
+/// grid or the calibrate flag actually change, not on every pinch/pan frame.
+private struct BoardContent: View, Equatable {
+    let image: UIImage
+    var grid: BoardGrid
+    var calibrating: Bool
+    var onCycle: (Int, Int) -> Void
+
+    // Ignore `onCycle` (closures aren't comparable); the render depends only on
+    // the grid contents and the calibrate flag.
+    static func == (a: BoardContent, b: BoardContent) -> Bool {
+        a.grid == b.grid && a.calibrating == b.calibrating
+    }
+
+    var body: some View {
+        ZStack {
+            Image(uiImage: image)
+                .resizable()
+            GeometryReader { geo in overlay(in: geo.size) }
+        }
+    }
+
+    private func overlay(in size: CGSize) -> some View {
+        let ins = MoonBoardProtocol.imageInsets
+        let left = size.width * ins.left
+        let top = size.height * ins.top
+        let gridW = size.width * (1 - ins.left - ins.right)
+        let gridH = size.height * (1 - ins.top - ins.bottom)
+        let cellW = gridW / CGFloat(MoonBoardProtocol.columns)
+        let cellH = gridH / CGFloat(MoonBoardProtocol.rows)
+        return ForEach(0..<MoonBoardProtocol.rows, id: \.self) { row in
+            ForEach(0..<MoonBoardProtocol.columns, id: \.self) { col in
+                let cx = left + (CGFloat(col) + 0.5) * cellW
+                // row 0 is the bottom of the board, so it maps to the bottom of the image.
+                let cy = top + (CGFloat(MoonBoardProtocol.rows - 1 - row) + 0.5) * cellH
+                cell(col: col, row: row, cellW: cellW, cellH: cellH)
+                    .position(x: cx, y: cy)
+            }
+        }
+    }
+
+    private func cell(col: Int, row: Int, cellW: CGFloat, cellH: CGFloat) -> some View {
+        let type = grid.type(col: col, row: row)
+        let dot = min(cellW, cellH) * MoonBoardProtocol.ledDotSize
+        return ZStack {
+            // Calibration: outline every cell so grid-vs-hold alignment is obvious.
+            if calibrating {
+                Rectangle()
+                    .strokeBorder(Color.yellow, lineWidth: 0.75)
+                    .frame(width: cellW, height: cellH)
+                Text("\(MoonBoardProtocol.columnLabel(col))\(MoonBoardProtocol.rowLabel(row))")
+                    .font(.system(size: 6))
+                    .foregroundStyle(Color.yellow)
+            }
+            // Lit hold: a filled LED dot just BELOW the hold, like the real board
+            // where the LEDs sit under each hold.
+            if let type {
+                Circle()
+                    .fill(holdColor(type))
+                    .frame(width: dot, height: dot)
+                    .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 0.5))
+                    .shadow(color: holdColor(type).opacity(0.7), radius: dot * 0.35)
+                    .offset(y: cellH * MoonBoardProtocol.ledDotOffset)
+            }
+        }
+        .frame(width: cellW, height: cellH)          // full-cell hit target
+        .contentShape(Rectangle())
+        .onTapGesture { onCycle(col, row) }
     }
 }
 
