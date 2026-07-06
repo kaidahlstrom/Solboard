@@ -278,10 +278,10 @@ extension BLEManager: CBCentralManagerDelegate {
         }
     }
 
-    nonisolated func centralManager(_ central: CBCentralManager,
+    nonisolated func centralManager(_: CBCentralManager,
                                     didDiscover peripheral: CBPeripheral,
                                     advertisementData: [String: Any],
-                                    rssi RSSI: NSNumber) {
+                                    rssi _: NSNumber) {
         let name = peripheral.name ?? (advertisementData[CBAdvertisementDataLocalNameKey] as? String)
         guard let name, !name.isEmpty else { return }   // hide unnamed noise
         let item = DiscoveredPeripheral(id: peripheral.identifier, name: name, peripheral: peripheral)
@@ -290,7 +290,7 @@ extension BLEManager: CBCentralManagerDelegate {
         }
     }
 
-    nonisolated func centralManager(_ central: CBCentralManager,
+    nonisolated func centralManager(_: CBCentralManager,
                                     didConnect peripheral: CBPeripheral) {
         Task { @MainActor in
             UserDefaults.standard.set(peripheral.identifier.uuidString, forKey: lastPeripheralKey)
@@ -298,20 +298,28 @@ extension BLEManager: CBCentralManagerDelegate {
         }
     }
 
-    nonisolated func centralManager(_ central: CBCentralManager,
-                                    didFailToConnect peripheral: CBPeripheral,
+    nonisolated func centralManager(_: CBCentralManager,
+                                    didFailToConnect _: CBPeripheral,
                                     error: Error?) {
         Task { @MainActor in
+            if let error {
+                debug.lastError = "connect failed: \(error.localizedDescription)"
+                log(debug.lastError ?? "")
+            }
             if reconnectTask != nil { return }   // let the reconnect loop keep retrying
             connected = nil
             status = .disconnected
         }
     }
 
-    nonisolated func centralManager(_ central: CBCentralManager,
+    nonisolated func centralManager(_: CBCentralManager,
                                     didDisconnectPeripheral peripheral: CBPeripheral,
                                     error: Error?) {
         Task { @MainActor in
+            if let error {
+                debug.lastError = "disconnected: \(error.localizedDescription)"
+                log(debug.lastError ?? "")
+            }
             writeCharacteristic = nil
             pendingChunks.removeAll()
             debug.characteristicUUID = nil
@@ -332,6 +340,13 @@ extension BLEManager: CBCentralManagerDelegate {
 
 extension BLEManager: CBPeripheralDelegate {
     nonisolated func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        if let error {
+            Task { @MainActor in
+                debug.lastError = "service discovery failed: \(error.localizedDescription)"
+                log(debug.lastError ?? "")
+            }
+            return
+        }
         for service in peripheral.services ?? [] {
             peripheral.discoverCharacteristics(nil, for: service)
         }
@@ -341,6 +356,11 @@ extension BLEManager: CBPeripheralDelegate {
                                 didDiscoverCharacteristicsFor service: CBService,
                                 error: Error?) {
         Task { @MainActor in
+            if let error {
+                debug.lastError = "characteristic discovery failed: \(error.localizedDescription)"
+                log(debug.lastError ?? "")
+                return
+            }
             for char in service.characteristics ?? [] {
                 // Match the confirmed RX (write) UUID; fall back to any writable
                 // characteristic as a safety net.
@@ -358,7 +378,7 @@ extension BLEManager: CBPeripheralDelegate {
         }
     }
 
-    nonisolated func peripheral(_ peripheral: CBPeripheral,
+    nonisolated func peripheral(_: CBPeripheral,
                                 didWriteValueFor characteristic: CBCharacteristic,
                                 error: Error?) {
         Task { @MainActor in
