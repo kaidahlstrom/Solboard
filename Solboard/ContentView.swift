@@ -11,7 +11,7 @@ import UIKit
 struct ContentView: View {
     enum Tab { case board, presets, connect }
 
-    // The route currently on the grid — shared so presets can load into it.
+    // The route currently on the grid - shared so presets can load into it.
     @State private var grid = BoardGrid()
     @State private var selectedTab: Tab = .board
     @StateObject private var ble = BLEManager()
@@ -101,15 +101,15 @@ struct BoardView: View {
     private var debugPanel: some View {
         let d = ble.debug
         return VStack(alignment: .leading, spacing: 2) {
-            Text("DEBUG · write path").font(.system(size: 10, weight: .bold, design: .monospaced))
-            Text("peripheral: \(d.peripheralName ?? "—")")
+            Text("DEBUG - write path").font(.system(size: 10, weight: .bold, design: .monospaced))
+            Text("peripheral: \(d.peripheralName ?? "-")")
             Text("writeChar: \(d.characteristicUUID ?? "nil")")
                 .foregroundStyle(d.characteristicUUID == nil ? Color.red : Color.secondary)
-            Text("props: [\(d.characteristicProps ?? "—")]  type: \(d.lastWriteType ?? "—")")
+            Text("props: [\(d.characteristicProps ?? "-")]  type: \(d.lastWriteType ?? "-")")
             Text("chunks: \(d.chunkCount) @ maxLen \(d.maxWriteLen)")
-            Text("ack: \(d.lastWriteAck ?? "—")  taps: \(d.sendCount)")
-            Text("payload: \(d.lastPayload ?? "—")")
-            Text("bytes: \(d.lastBytesHex ?? "—")")
+            Text("ack: \(d.lastWriteAck ?? "-")  taps: \(d.sendCount)")
+            Text("payload: \(d.lastPayload ?? "-")")
+            Text("bytes: \(d.lastBytesHex ?? "-")")
             Text("error: \(d.lastError ?? "none")")
                 .foregroundStyle(d.lastError == nil ? Color.secondary : Color.red)
         }
@@ -179,7 +179,7 @@ struct BoardView: View {
     /// Zoomable/pannable board. The image, tap cells, LED dots, and calibrate
     /// overlay are transformed together, so hit targets stay aligned at any zoom.
     /// The board content is a separate Equatable view (`BoardContent`) so the
-    /// 198-cell overlay is NOT rebuilt on every pinch/pan frame — only the
+    /// 198-cell overlay is NOT rebuilt on every pinch/pan frame - only the
     /// scale/offset transform updates. Zoom lives in local @State (never in the
     /// observed BLE object), so gestures don't invalidate any published state.
     private func boardImageView(_ img: UIImage) -> some View {
@@ -243,7 +243,7 @@ struct BoardView: View {
             )
             // Reset-to-fit button, shown only while zoomed. No double-tap gesture
             // anywhere near the cells, so a single tap-to-cycle NEVER waits on
-            // double-tap disambiguation — it fires immediately.
+            // double-tap disambiguation - it fires immediately.
             .overlay(alignment: .topTrailing) {
                 if zoomScale > 1 {
                     Button {
@@ -323,7 +323,7 @@ private func holdColor(_ type: HoldType?) -> Color {
 
 /// The board image plus its 198-cell overlay (tap targets, LED dots, calibrate
 /// grid). A dedicated `Equatable` view so SwiftUI can skip rebuilding all the
-/// cells when only the zoom transform changes — its body re-runs solely when the
+/// cells when only the zoom transform changes - its body re-runs solely when the
 /// grid or the calibrate flag actually change, not on every pinch/pan frame.
 private struct BoardContent: View, Equatable {
     let image: UIImage
@@ -413,7 +413,7 @@ struct PresetsView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(preset.name)
-                            Text("\(preset.holds.count) holds · \(preset.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                            Text("\(preset.holds.count) holds - \(preset.createdAt.formatted(date: .abbreviated, time: .shortened))")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

@@ -23,10 +23,10 @@ enum ConnectionStatus: Equatable {
         switch self {
         case .poweredOff:          return "Bluetooth off"
         case .disconnected:        return "Disconnected"
-        case .scanning:            return "Scanning…"
-        case .connecting(let n):   return "Connecting to \(n)…"
+        case .scanning:            return "Scanning..."
+        case .connecting(let n):   return "Connecting to \(n)..."
         case .connected(let n):    return "Connected: \(n)"
-        case .reconnecting(let n): return "Reconnecting to \(n)…"
+        case .reconnecting(let n): return "Reconnecting to \(n)..."
         }
     }
 }
@@ -71,7 +71,7 @@ final class BLEManager: NSObject, ObservableObject {
     private var writeCharacteristic: CBCharacteristic?
     /// Remaining command chunks awaiting sequential, ack-paced writes.
     private var pendingChunks: [Data] = []
-    /// True while the user explicitly tapped Disconnect — suppresses auto-reconnect.
+    /// True while the user explicitly tapped Disconnect - suppresses auto-reconnect.
     private var userInitiatedDisconnect = false
     /// Active auto-reconnect attempt, if any.
     private var reconnectTask: Task<Void, Never>?
@@ -83,13 +83,13 @@ final class BLEManager: NSObject, ObservableObject {
 
     /// The Connect-tab list. Two layers of filtering, both always on: scanning is
     /// restricted to the UART service (below), then names are narrowed to MoonBoard
-    /// boxes here — so only MoonBoard boxes ever reach the UI.
+    /// boxes here - so only MoonBoard boxes ever reach the UI.
     var visibleDevices: [DiscoveredPeripheral] {
         discovered.filter { Self.looksLikeMoonBoard($0.name) }
     }
 
     /// Name contains "moon" (any case), or is a bare 12-digit numeric ID (some
-    /// boxes advertise a serial). Heuristic only — the toggle is the fallback.
+    /// boxes advertise a serial). Heuristic only - the toggle is the fallback.
     static func looksLikeMoonBoard(_ name: String) -> Bool {
         if name.lowercased().contains("moon") { return true }
         return name.range(of: "^[0-9]{12}$", options: .regularExpression) != nil
@@ -179,23 +179,23 @@ final class BLEManager: NSObject, ObservableObject {
 
     // MARK: Sending
 
-    /// Write a route to the board. Safe to call when not ready — it just reports.
+    /// Write a route to the board. Safe to call when not ready - it just reports.
     func send(_ holds: [Hold]) {
         debug.sendCount += 1                       // proves the tap reached here (Q3)
         guard let peripheral = connected, let tx = writeCharacteristic else {
             lastSendError = "Not connected"
             debug.lastError = "send: connected=\(connected != nil) writeChar=\(writeCharacteristic != nil)"
-            log("send aborted — \(debug.lastError ?? "")")
+            log("send aborted - \(debug.lastError ?? "")")
             return
         }
         lastSendError = nil
         let command = MoonBoardProtocol.command(for: holds)
         let data = Data(command.utf8)
 
-        // Old Nordic chip: 23-byte ATT MTU → only 20 usable bytes; single writes
+        // Old Nordic chip: 23-byte ATT MTU -> only 20 usable bytes; single writes
         // over that are silently dropped. Chunk to the negotiated max (capped at
         // 20) and send sequentially with write-with-response, waiting for each
-        // ack before the next chunk. The l#…# framing lets the box reassemble.
+        // ack before the next chunk. The l#...# framing lets the box reassemble.
         let maxLen = min(peripheral.maximumWriteValueLength(for: .withResponse), 20)
         pendingChunks = Self.chunk(data, size: maxLen)
 
@@ -205,7 +205,7 @@ final class BLEManager: NSObject, ObservableObject {
         debug.lastPayload = command
         debug.lastBytesHex = data.map { String(format: "%02X", $0) }.joined(separator: " ")
         debug.lastWriteType = "withResponse"
-        debug.lastWriteAck = "pending…"
+        debug.lastWriteAck = "pending..."
         debug.lastError = nil
         debug.chunkCount = pendingChunks.count
         debug.maxWriteLen = maxLen
@@ -226,7 +226,7 @@ final class BLEManager: NSObject, ObservableObject {
             return
         }
         let chunk = pendingChunks.removeFirst()
-        log("→ chunk \(chunk.map { String(format: "%02X", $0) }.joined(separator: " "))")
+        log("-> chunk \(chunk.map { String(format: "%02X", $0) }.joined(separator: " "))")
         peripheral.writeValue(chunk, for: tx, type: .withResponse)
     }
 
@@ -324,7 +324,7 @@ extension BLEManager: CBCentralManagerDelegate {
             pendingChunks.removeAll()
             debug.characteristicUUID = nil
             debug.characteristicProps = nil
-            // User tapped Disconnect → stay down. Unexpected drop → auto-reconnect.
+            // User tapped Disconnect -> stay down. Unexpected drop -> auto-reconnect.
             if userInitiatedDisconnect {
                 userInitiatedDisconnect = false
                 connected = nil
@@ -390,7 +390,7 @@ extension BLEManager: CBPeripheralDelegate {
                 log("write ack ERROR: \(error.localizedDescription)")
             } else {
                 log("write ack OK for \(characteristic.uuid)")
-                writeNextChunk()                    // ack received → send next chunk
+                writeNextChunk()                    // ack received -> send next chunk
             }
         }
     }

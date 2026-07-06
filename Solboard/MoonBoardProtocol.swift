@@ -30,7 +30,7 @@ enum HoldType: String, Codable, CaseIterable, Identifiable {
     }
 
     /// Emission order in the command string. The box silently ignores payloads
-    /// that aren't grouped S → P → E, so this is load-bearing, not cosmetic.
+    /// that aren't grouped S -> P -> E, so this is load-bearing, not cosmetic.
     var sortRank: Int {
         switch self {
         case .start: return 0
@@ -52,20 +52,20 @@ struct Hold: Codable, Equatable {
 
 enum MoonBoardProtocol {
 
-    // Board geometry — MoonBoard 2024 full-size board.
+    // Board geometry - MoonBoard 2024 full-size board.
     static let columns = 11          // A ... K
     static let rows = 18             // 1 ... 18
     static var holdCount: Int { columns * rows }   // 198
 
-    // MARK: Pure mapping — (column, row, holdType) -> command fragment
+    // MARK: Pure mapping - (column, row, holdType) -> command fragment
 
     /// LED position for a 0-based grid cell (col A=0..K=10, row 0..17 bottom-up).
     ///
-    /// Confirmed on-wall: positions are 0-based, range 0–197, laid out SERPENTINE.
+    /// Confirmed on-wall: positions are 0-based, range 0-197, laid out SERPENTINE.
     /// Even column indices run bottom-up; odd column indices run top-down.
     /// (Initial recon missed the serpentine because A1/C15/K18 all sit in even
-    /// columns, where both layouts agree.) Verified mappings: 0→A1, 17→A18,
-    /// 50→C15, 58→D14, 67→D5, 197→K18. Out-of-range positions are silently
+    /// columns, where both layouts agree.) Verified mappings: 0->A1, 17->A18,
+    /// 50->C15, 58->D14, 67->D5, 197->K18. Out-of-range positions are silently
     /// ignored by the box.
     static func position(col: Int, row: Int) -> Int {
         let within = (col % 2 == 0) ? row : (rows - 1 - row)
@@ -78,7 +78,7 @@ enum MoonBoardProtocol {
     }
 
     /// Full command string for a route: `l#S5,P9,P13,E18#`.
-    /// Holds MUST be grouped by type (all S, then P, then E) — the box silently
+    /// Holds MUST be grouped by type (all S, then P, then E) - the box silently
     /// ignores payloads that aren't. Within a type, sort by position ascending
     /// for a stable, reproducible payload.
     static func command(for holds: [Hold]) -> String {
@@ -98,17 +98,17 @@ enum MoonBoardProtocol {
         Data(command(for: holds).utf8)
     }
 
-    // MARK: BLE identifiers — CONFIRMED on-site (nRF Connect). Board name "MoonBoard A".
+    // MARK: BLE identifiers - CONFIRMED on-site (nRF Connect). Board name "MoonBoard A".
 
-    /// Nordic UART Service — confirmed standard NUS UUID.
+    /// Nordic UART Service - confirmed standard NUS UUID.
     static let uartService = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
-    /// NUS RX characteristic — the central WRITES route commands here. Confirmed.
+    /// NUS RX characteristic - the central WRITES route commands here. Confirmed.
     static let uartRX = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 
     // MARK: Board image overlay calibration (gym-day tunable, one place)
 
-    /// Fractions of the "board" image consumed by margin OUTSIDE the 11×18 hold
-    /// grid — the border of the artwork before the first/last hold centers. Tune
+    /// Fractions of the "board" image consumed by margin OUTSIDE the 11x18 hold
+    /// grid - the border of the artwork before the first/last hold centers. Tune
     /// these four numbers so the overlaid hold cells land on the drawn holds.
     struct ImageInsets {
         var top: CGFloat
@@ -116,7 +116,7 @@ enum MoonBoardProtocol {
         var left: CGFloat
         var right: CGFloat
     }
-    // Measured from the actual hold positions in the board artwork — do not tweak
+    // Measured from the actual hold positions in the board artwork - do not tweak
     // by eye. The matrix is asymmetric in the image, hence the differing sides.
     // Re-measure and replace wholesale if the board image is ever swapped; the
     // DEBUG "Calibrate" toggle on the Board tab visualizes the fit.
@@ -126,7 +126,7 @@ enum MoonBoardProtocol {
     /// drawn below each lit hold to mimic the under-hold LEDs on the real board.
     /// Calibrate against the artwork with the DEBUG "Calibrate" toggle.
     static let ledDotSize: CGFloat = 0.175     // diameter, in cell widths/heights
-    static let ledDotOffset: CGFloat = 0.50    // downward shift below hold center, in cell heights (≈ midway to the hold below)
+    static let ledDotOffset: CGFloat = 0.50    // downward shift below hold center, in cell heights (~ midway to the hold below)
 
     // Grid labels for the UI.
     static func columnLabel(_ col: Int) -> String {
