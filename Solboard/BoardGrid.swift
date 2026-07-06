@@ -41,9 +41,7 @@ struct BoardGrid: Equatable {
         cells.map { Hold(col: $0.key.col, row: $0.key.row, type: $0.value) }
     }
 
-    // Explicit empty init: declaring init(holds:) suppresses the implicit one,
-    // so this restores `BoardGrid()` for an empty grid.
-    init() {}
+    init() { /* Explicit empty init: init(holds:) suppresses the implicit one */ }
 
     init(holds: [Hold]) {
         for h in holds {
